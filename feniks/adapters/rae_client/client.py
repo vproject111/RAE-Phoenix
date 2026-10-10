@@ -54,8 +54,14 @@ class RAEClient:
             api_key: RAE API key (defaults to settings)
             timeout: Request timeout in seconds
         """
-        self.base_url = (base_url or settings.rae_base_url or "").rstrip("/")
-        self.api_key = api_key or settings.rae_api_key
+        self.base_url = (
+            base_url
+            or settings.rae_base_url
+            or os.getenv("RAE_API_URL")
+            or os.getenv("RAE_BASE_URL")
+            or "http://localhost:8000"
+        ).rstrip("/")
+        self.api_key = api_key or settings.rae_api_key or os.getenv("RAE_API_KEY")
         self.timeout = timeout
 
         if not self.base_url:

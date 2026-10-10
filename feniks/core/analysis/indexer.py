@@ -35,7 +35,8 @@ class SystemIndexer:
         extensions = ["*.py", "*.ts", "*.tsx", "*.php"]
         ignore_dirs = {
             "venv", ".venv", "node_modules", ".git", "dist", "build", 
-            "__pycache__", ".pytest_cache", "rae-open-claw", "tmp_node1_sync"
+            "__pycache__", ".pytest_cache", "rae-open-claw", "tmp_node1_sync",
+            "work_dir", "runs", "experiments", "htmlcov", ".benchmarks", "output"
         }
         files = []
         for ext in extensions:

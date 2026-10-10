@@ -53,8 +53,8 @@ class Settings(BaseSettings):
     feniks_profile: str = "dev"
 
     # --- RAE Integration Settings (Iteration 5) ---
-    rae_enabled: bool = False
-    rae_base_url: Optional[str] = None
+    rae_enabled: bool = True
+    rae_base_url: Optional[str] = "http://localhost:8000"
     rae_api_key: Optional[str] = None
     rae_timeout: int = 30  # seconds
 

@@ -29,8 +29,8 @@ class PhoenixRefactorer:
     
     def __init__(self):
         self.enterprise_foundation = RAE_Enterprise_Foundation(module_name="rae-phoenix")
-        self.api_url = os.getenv("RAE_API_URL", "http://rae-api-dev:8000")
-        self.quality_url = os.getenv("QUALITY_API_URL", "http://rae-quality:8000")
+        self.api_url = os.getenv("RAE_API_URL", "http://localhost:8000")
+        self.quality_url = os.getenv("QUALITY_API_URL", "http://localhost:8011")
         self.plugin_manager = PluginManager()
         self.bridge = RAEMemoryBridge(project_name="rae-phoenix")
         self.llm_agent = os.getenv("PHOENIX_LLM_AGENT", "rae-oracle-gemini")
@@ -357,4 +357,5 @@ def health():
     return {"status": "healthy"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PHOENIX_PORT", "8012"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
