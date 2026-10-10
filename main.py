@@ -357,5 +357,5 @@ def health():
     return {"status": "healthy"}
 
 if __name__ == "__main__":
-    port = int(os.getenv("PHOENIX_PORT", "8012"))
+    port = int(os.getenv("PORT", os.getenv("PHOENIX_PORT", "8000")))
     uvicorn.run(app, host="0.0.0.0", port=port)
