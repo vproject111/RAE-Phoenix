@@ -33,8 +33,8 @@ def test_phoenix_closed_loop_success_on_second_attempt():
             # Mock quality audits
             refactorer._request_quality_re_audit = AsyncMock()
             refactorer._request_quality_re_audit.side_effect = [
-                {"verdict": "REJECTED", "seniority_attained": "junior", "reasoning": "Missing SOLID principles"},
-                {"verdict": "PASSED", "seniority_attained": "advanced_senior", "reasoning": "Perfect standard achieved"}
+                {"verdict": "REJECTED", "seniority_level": "junior", "reasoning": "Missing SOLID principles"},
+                {"verdict": "PASSED", "seniority_level": "advanced_senior", "reasoning": "Perfect standard achieved"}
             ]
             
             initial_code = "class Code: # broken"
@@ -84,7 +84,7 @@ def test_phoenix_closed_loop_max_attempts_escalation_and_rollback():
             # Mock quality audits (all failed)
             refactorer._request_quality_re_audit = AsyncMock(return_value={
                 "verdict": "REJECTED", 
-                "seniority_attained": "mid", 
+                "seniority_level": "mid", 
                 "reasoning": "Still broken"
             })
             

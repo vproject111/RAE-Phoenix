@@ -260,7 +260,7 @@ class TestEnhancedRAEClient:
 
     def test_factory_function_with_disabled_rae(self):
         """Test factory function returns None when RAE disabled."""
-        with patch("feniks.config.settings.settings") as mock_settings:
+        with patch("feniks.adapters.rae_client.enhanced_client.settings") as mock_settings:
             mock_settings.rae_enabled = False
 
             client = create_enhanced_rae_client()
@@ -269,7 +269,7 @@ class TestEnhancedRAEClient:
 
     def test_factory_function_success(self):
         """Test factory function creates client successfully."""
-        with patch("feniks.config.settings.settings") as mock_settings:
+        with patch("feniks.adapters.rae_client.enhanced_client.settings") as mock_settings:
             mock_settings.rae_enabled = True
             mock_settings.rae_base_url = "http://localhost:8000"
             mock_settings.rae_api_key = "test-key"

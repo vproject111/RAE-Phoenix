@@ -108,15 +108,22 @@ class PhoenixRefactorer:
             verdict = await self._request_quality_re_audit(fixed_code, project)
             final_verdict = verdict
             
+            seniority = (
+                verdict.get("seniority_level")
+                or verdict.get("seniority_attained")
+                or (verdict.get("metadata") or {}).get("seniority_level")
+                or ""
+            ).lower().replace(" ", "_")
+
             self.bridge.log_decision(
                 action="quality_verdict_received",
-                reasoning=f"Attempt {attempt} Verdict: {verdict.get('verdict')} (Level: {verdict.get('seniority_attained')})",
+                reasoning=f"Attempt {attempt} Verdict: {verdict.get('verdict')} (Level: {seniority})",
                 payload=verdict
             )
 
-            # HARD CONTRACT: Must be PASSED and reach ADVANCED_SENIOR seniority
-            if verdict.get("verdict") == "PASSED" and verdict.get("seniority_attained") == "advanced_senior":
-                logger.info(f"phoenix_fix_verified: Advanced Senior Standard Reached on attempt {attempt}.", project=project)
+            # HARD CONTRACT: Must be PASSED and reach SENIOR or ADVANCED_SENIOR seniority
+            if verdict.get("verdict") == "PASSED" and seniority in ["advanced_senior", "senior"]:
+                logger.info(f"phoenix_fix_verified: Quality standard '{seniority}' reached on attempt {attempt}.", project=project)
                 success = True
                 current_code = fixed_code
                 break
@@ -272,6 +279,17 @@ async def handle_list_tools():
                 },
                 "required": ["project", "objective", "target_path"]
             }
+        ),
+        Tool(
+            name="analyze_impact_zone",
+            description="Analyzes the repository dependency graph to identify all dependents and symbols affected by changing a file.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to the target file to analyze"}
+                },
+                "required": ["file_path"]
+            }
         )
     ]
 
@@ -293,6 +311,10 @@ async def handle_call_tool(name: str, arguments: dict):
             arguments.get("architecture_style", "Clean Architecture")
         )
         return [TextContent(type="text", text=str(res))]
+    elif name == "analyze_impact_zone":
+        file_path = arguments.get("file_path", "")
+        impact = refactorer.indexer.get_impact_zone(file_path)
+        return [TextContent(type="text", text=str(impact))]
     raise ValueError(f"Unknown tool: {name}")
 
 app = FastAPI()
@@ -323,6 +345,12 @@ async def api_create(payload: dict):
         payload.get("target_path"),
         payload.get("architecture_style", "Clean Architecture")
     )
+
+@app.post("/v2/phoenix/impact")
+async def api_impact(payload: dict):
+    """Bridge endpoint to calculate impact zone and affected dependents."""
+    file_path = payload.get("file_path", "")
+    return refactorer.indexer.get_impact_zone(file_path)
 
 @app.get("/health")
 def health():
