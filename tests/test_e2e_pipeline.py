@@ -25,6 +25,10 @@ def test_full_end_to_end_pipeline(monkeypatch):
     if not (settings.project_root / "frontend-master").exists():
         pytest.skip("frontend-master directory not found, skipping E2E test")
 
+    import shutil
+    if not shutil.which("node"):
+        pytest.skip("Node.js binary not installed on host, skipping E2E test")
+
     # 1. Setup: Define a unique collection name for this test run
     collection_name = f"test-collection-{uuid.uuid4()}"
 

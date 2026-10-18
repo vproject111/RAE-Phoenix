@@ -103,7 +103,7 @@ class TestEnhancedRAEClient:
     def test_get_cross_project_patterns_success(self, enhanced_client):
         """Test retrieving cross-project patterns."""
         mock_patterns = {
-            "patterns": [
+            "results": [
                 {
                     "pattern_type": "refactoring",
                     "confidence": 0.85,
@@ -126,7 +126,7 @@ class TestEnhancedRAEClient:
     def test_get_historical_refactorings_success(self, enhanced_client):
         """Test retrieving historical refactorings."""
         mock_refactorings = {
-            "refactorings": [
+            "results": [
                 {
                     "refactor_type": "extract-method",
                     "success_rate": 0.85,
@@ -198,7 +198,7 @@ class TestEnhancedRAEClient:
             )
 
             # Should return original reflection unchanged
-            assert enriched.reflection_id == sample_reflection.reflection_id
+            assert enriched.id == sample_reflection.id
             assert enriched.metadata.get("rae_enriched") is None
 
     def test_store_refactor_outcome_success(self, enhanced_client):
@@ -248,8 +248,9 @@ class TestEnhancedRAEClient:
         """Test building enrichment query from reflection."""
         query = enhanced_client._build_enrichment_query(sample_reflection)
 
-        assert "code_quality" in query
-        assert "Test reflection summary" in query
+        assert "code quality" in query
+        assert "codebase" in query
+        assert "Test Reflection" in query
 
     def test_extract_refactor_type(self, enhanced_client, sample_reflection):
         """Test extracting refactor type from reflection metadata."""

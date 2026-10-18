@@ -66,6 +66,11 @@ class Chunk:
     chunk_name: str
     language: str
 
+    @property
+    def content(self) -> str:
+        return self.text
+
+
     # --- Wzbogacone Metadane ---
     module: Optional[str] = None
     kind: Optional[str] = None  # service, controller, directive, filter, route, template

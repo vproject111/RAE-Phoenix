@@ -48,6 +48,9 @@ class RoutingDecision:
     metadata: Dict[str, Any]
 
 
+_UNDEFINED = object()
+
+
 class FeniksMemoryRouter:
     """
     Routes memory operations between local (Qdrant) and global (RAE) storage.
@@ -61,7 +64,7 @@ class FeniksMemoryRouter:
     def __init__(
         self,
         qdrant_client: Any,  # QdrantClient instance
-        rae_client: Optional[EnhancedRAEClient] = None,
+        rae_client: Any = _UNDEFINED,
         default_strategy: RoutingStrategy = RoutingStrategy.HYBRID,
         project: str = "default",
     ):
@@ -75,7 +78,7 @@ class FeniksMemoryRouter:
             project: Project identifier for context
         """
         self.qdrant = qdrant_client
-        self.rae = rae_client or create_enhanced_rae_client()
+        self.rae = create_enhanced_rae_client() if rae_client is _UNDEFINED else rae_client
         self.default_strategy = default_strategy
         self.project = project
 
@@ -100,6 +103,16 @@ class FeniksMemoryRouter:
             RoutingDecision: Where to store the data
         """
         metadata = metadata or {}
+
+        # RAE unavailable → Local only
+        if not self.rae:
+            return RoutingDecision(
+                strategy=RoutingStrategy.LOCAL_ONLY,
+                store_local=True,
+                store_global=False,
+                reason="RAE client unavailable, falling back to local storage",
+                metadata={"fallback": True},
+            )
 
         # Critical data types → Dual-write
         if data_type in ["system_model", "refactor_outcome", "cross_project_pattern"]:
@@ -139,16 +152,6 @@ class FeniksMemoryRouter:
                 store_global=True,
                 reason="Cross-project data belongs in global storage",
                 metadata={"scope": "cross_project"},
-            )
-
-        # RAE unavailable → Local only
-        if not self.rae:
-            return RoutingDecision(
-                strategy=RoutingStrategy.LOCAL_ONLY,
-                store_local=True,
-                store_global=False,
-                reason="RAE client unavailable, falling back to local storage",
-                metadata={"fallback": True},
             )
 
         # Default hybrid strategy

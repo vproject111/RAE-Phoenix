@@ -1,0 +1,13 @@
+node_modules
+venv
+.venv
+.git
+__pycache__
+.pytest_cache
+*.log
+runs
+htmlcov
+.coverage
+coverage.xml
+*.onnx
+models

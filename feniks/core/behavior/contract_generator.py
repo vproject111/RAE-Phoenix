@@ -13,6 +13,7 @@ from feniks.core.models.behavior import (
     CLISuccessCriteria
 )
 from feniks.infra.logging import get_logger
+from feniks.exceptions import FeniksError
 from datetime import datetime
 import uuid
 
@@ -23,6 +24,36 @@ class ContractGenerator:
     Analyzes multiple snapshots to find invariants and patterns.
     Ensures 100% parity detection for legacy systems.
     """
+
+    def __init__(self, min_snapshots: int = 3, confidence_threshold: float = 0.8):
+        self.min_snapshots = min_snapshots
+        self.confidence_threshold = confidence_threshold
+
+    def generate_contract(self, snapshots: List[BehaviorSnapshot]) -> BehaviorContract:
+        """
+        Synthesizes a contract from a list of snapshots.
+        """
+        if not snapshots or len(snapshots) < self.min_snapshots:
+            raise FeniksError(f"Insufficient snapshots: need at least {self.min_snapshots}, got {len(snapshots) if snapshots else 0}")
+
+        scenarios = set(s.scenario_id for s in snapshots)
+        if len(scenarios) > 1:
+            raise FeniksError(f"Cannot generate contract from snapshots with multiple scenarios: {scenarios}")
+
+        scenario_id = snapshots[0].scenario_id
+        project = snapshots[0].project
+
+        durations = [s.duration_ms for s in snapshots if s.duration_ms is not None]
+        p95_duration = None
+        if durations:
+            import numpy as np
+            p95_duration = int(np.percentile(durations, 95, method="nearest"))
+
+        contract = self.generate_from_snapshots(project=project, scenario_id=scenario_id, snapshots=snapshots)
+        contract.derived_from_snapshot_ids = [s.id for s in snapshots]
+        contract.confidence_score = self.confidence_threshold
+        contract.max_duration_ms_p95 = p95_duration
+        return contract
 
     def generate_from_snapshots(
         self, 
@@ -36,7 +67,10 @@ class ContractGenerator:
         if not snapshots:
             raise ValueError("Cannot generate contract from empty snapshots")
 
-        log.info("generating_contract", project=project, scenario_id=scenario_id, snapshot_count=len(snapshots))
+        log.info(
+            f"generating_contract project={project} scenario={scenario_id} count={len(snapshots)}",
+            extra={"project": project, "scenario_id": scenario_id, "snapshot_count": len(snapshots)}
+        )
 
         # 1. Analyze CLI Invariants
         cli_contract = self._analyze_cli_invariants(snapshots)

@@ -14,8 +14,12 @@
 from abc import ABC, abstractmethod
 from typing import Any
 
-import escodegen
-import esprima
+try:
+    import escodegen
+    import esprima
+except ImportError:
+    escodegen = None
+    esprima = None
 
 # Define a generic ASTNode type for type hinting
 ASTNode = Any
@@ -67,6 +71,8 @@ class JavaScriptPlugin(BaseLanguagePlugin):
         """
         Parses JavaScript code into an AST using esprima.
         """
+        if esprima is None:
+            raise RuntimeError("esprima package is required for JavaScriptPlugin AST parsing")
         try:
             return esprima.parseScript(content, options={"loc": True, "tolerant": True})
         except esprima.Error as e:
@@ -77,6 +83,8 @@ class JavaScriptPlugin(BaseLanguagePlugin):
         """
         Generates JavaScript code from an AST using escodegen.
         """
+        if escodegen is None:
+            raise RuntimeError("escodegen package is required for JavaScriptPlugin code generation")
         return escodegen.generate(ast)
 
     def find_matches(self, pattern: dict, ast: ASTNode) -> list[ASTNode]:

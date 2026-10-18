@@ -222,6 +222,17 @@ class ObservedHTTP(BaseModel):
     body: Optional[str | dict[str, Any]] = None
 
 
+class DOMElement(BaseModel):
+    """
+    Metadata of a captured DOM element.
+    """
+    selector: Optional[str] = None
+    tag_name: str
+    text_content: str
+    is_visible: bool
+    attributes: dict[str, str] = Field(default_factory=dict)
+
+
 class ObservedDOM(BaseModel):
     """
     Minimal DOM snapshot from UI scenario execution.
@@ -232,6 +243,8 @@ class ObservedDOM(BaseModel):
     missing_selectors: list[str] = Field(default_factory=list)
     present_text_snippets: list[str] = Field(default_factory=list)
     missing_text_snippets: list[str] = Field(default_factory=list)
+    elements: list[DOMElement] = Field(default_factory=list)
+
 
 
 class ObservedLogs(BaseModel):

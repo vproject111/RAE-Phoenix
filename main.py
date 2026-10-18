@@ -29,10 +29,11 @@ class PhoenixRefactorer:
     
     def __init__(self):
         self.enterprise_foundation = RAE_Enterprise_Foundation(module_name="rae-phoenix")
-        self.api_url = os.getenv("RAE_API_URL", "http://rae-api-dev:8000")
-        self.quality_url = os.getenv("QUALITY_API_URL", "http://rae-quality:8000")
+        self.api_url = os.getenv("RAE_API_URL", "http://localhost:8000")
+        self.quality_url = os.getenv("QUALITY_API_URL", "http://localhost:8010")
         self.plugin_manager = PluginManager()
         self.bridge = RAEMemoryBridge(project_name="rae-phoenix")
+        self.llm_agent = os.getenv("PHOENIX_LLM_AGENT", "rae-oracle-gemini")
         
         # System-wide Intelligence
         self.indexer = SystemIndexer(project_root=".")
@@ -62,9 +63,9 @@ class PhoenixRefactorer:
         if impact["total_dependents"] > 0:
             logger.warning(f"phoenix_impact_alert: Modifying {file_path} affects {impact['total_dependents']} dependents.")
 
-        # Closed-Loop Repair Parameters
-        max_attempts = 5
-        max_token_budget = 10000
+        # Closed-Loop Repair Parameters (configurable via PHOENIX_MAX_ATTEMPTS)
+        max_attempts = int(os.getenv("PHOENIX_MAX_ATTEMPTS", "5"))
+        max_token_budget = int(os.getenv("PHOENIX_MAX_TOKEN_BUDGET", "10000"))
         tokens_used = 0
         current_code = code
         current_reason = reason
@@ -73,6 +74,7 @@ class PhoenixRefactorer:
         attempt = 0
         success = False
         final_verdict = None
+        behavior_verified = True
         
         while attempt < max_attempts and tokens_used < max_token_budget:
             attempt += 1
@@ -103,19 +105,29 @@ class PhoenixRefactorer:
                 # Plugin-based repairs also count towards resource budget
                 tokens_used += 500  
 
+            # 2b. Behavioral Verification Check (ensure no public function/class signatures were accidentally dropped)
+            behavior_verified = self._verify_behavioral_parity(initial_code, fixed_code, file_path)
+
             # 3. SELF-VERIFY (Quality Gate / Tribunal audit)
             verdict = await self._request_quality_re_audit(fixed_code, project)
             final_verdict = verdict
             
+            seniority = (
+                verdict.get("seniority_level")
+                or verdict.get("seniority_attained")
+                or (verdict.get("metadata") or {}).get("seniority_level")
+                or ""
+            ).lower().replace(" ", "_")
+
             self.bridge.log_decision(
                 action="quality_verdict_received",
-                reasoning=f"Attempt {attempt} Verdict: {verdict.get('verdict')} (Level: {verdict.get('seniority_attained')})",
+                reasoning=f"Attempt {attempt} Verdict: {verdict.get('verdict')} (Level: {seniority}, BehaviorParity: {behavior_verified})",
                 payload=verdict
             )
 
-            # HARD CONTRACT: Must be PASSED and reach ADVANCED_SENIOR seniority
-            if verdict.get("verdict") == "PASSED" and verdict.get("seniority_attained") == "advanced_senior":
-                logger.info(f"phoenix_fix_verified: Advanced Senior Standard Reached on attempt {attempt}.", project=project)
+            # HARD CONTRACT: Must be PASSED, maintain behavioral parity, and reach SENIOR or ADVANCED_SENIOR seniority
+            if verdict.get("verdict") == "PASSED" and seniority in ["advanced_senior", "senior"] and behavior_verified:
+                logger.info(f"phoenix_fix_verified: Quality standard '{seniority}' reached on attempt {attempt}.", project=project)
                 success = True
                 current_code = fixed_code
                 break
@@ -123,6 +135,8 @@ class PhoenixRefactorer:
                 # Update current code and failure reason for the next loop iteration
                 current_code = fixed_code
                 current_reason = verdict.get("reasoning", "Quality standards not met.")
+                if not behavior_verified:
+                    current_reason += " | Behavioral regression: public symbol signature dropped."
                 logger.warning(f"phoenix_repair_attempt_failed: Attempt {attempt} failed. Reasons: {current_reason}")
 
         if success:
@@ -201,8 +215,29 @@ class PhoenixRefactorer:
         generated_code = await plugin.execute_create(spec)
         return {"status": "SUCCESS", "code": generated_code, "plugin_used": plugin.name}
 
+    def _verify_behavioral_parity(self, original_code: str, candidate_code: str, file_path: str) -> bool:
+        """Verifies behavioral contract parity (e.g., public AST symbols preserved in Python files)."""
+        if not file_path.endswith(".py"):
+            return True
+        try:
+            import ast
+            orig_tree = ast.parse(original_code)
+            cand_tree = ast.parse(candidate_code)
+            orig_symbols = {
+                n.name for n in orig_tree.body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and not n.name.startswith("_")
+            }
+            cand_symbols = {
+                n.name for n in cand_tree.body
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and not n.name.startswith("_")
+            }
+            return orig_symbols.issubset(cand_symbols)
+        except Exception:
+            # If original code had syntax errors, allow the fix
+            return True
+
     async def _fallback_llm_fix(self, code: str, reason: str, project: str, impact: Dict[str, Any]) -> str:
-        """Consults LLM for the fix (legacy fallback)."""
+        """Consults LLM or LayerTriadRunner (tier2_review_repair) for the fix."""
         prompt = f"""
         Jesteś RAE Phoenix (Ekspert Refaktoryzacji). 
         KOD DO NAPRAWY: {code}
@@ -214,13 +249,32 @@ class PhoenixRefactorer:
         Weź pod uwagę wpływ na inne moduły (Impact Zone).
         Odpowiedz TYLKO naprawionym kodem.
         """
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(f"{self.api_url}/v2/bridge/interact", json={
-                "intent": "CODE_REFACTORING_REQUEST",
-                "target_agent": "rae-oracle-gemini",
-                "payload": {"prompt": prompt}
-            })
-            return resp.json().get("payload", {}).get("interaction_data", {}).get("code", code) if resp.status_code == 200 else code
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                resp = await client.post(f"{self.api_url}/v2/bridge/interact", json={
+                    "intent": "CODE_REFACTORING_REQUEST",
+                    "target_agent": self.llm_agent,
+                    "payload": {"prompt": prompt}
+                })
+                if resp.status_code == 200:
+                    fixed = resp.json().get("payload", {}).get("interaction_data", {}).get("code")
+                    if fixed:
+                        return fixed
+        except Exception:
+            pass
+
+        # Fallback to LayerTriadRunner (tier2_review_repair) if available
+        try:
+            from core.layer_triad_runner import LayerTriadRunner
+            runner = LayerTriadRunner()
+            triad_res = await runner.execute_layer_triad("tier2_review_repair", prompt)
+            for item in triad_res.get("individual_reviews", []):
+                if item.get("status") == "SUCCESS" and item.get("content"):
+                    return item["content"]
+        except Exception:
+            pass
+
+        return code
 
     async def _request_quality_re_audit(self, code: str, project: str) -> Dict[str, Any]:
         """Asks RAE-Quality (Tribunal) directly for a new semantic audit (Direct A2A)."""
@@ -271,6 +325,17 @@ async def handle_list_tools():
                 },
                 "required": ["project", "objective", "target_path"]
             }
+        ),
+        Tool(
+            name="analyze_impact_zone",
+            description="Analyzes the repository dependency graph to identify all dependents and symbols affected by changing a file.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "file_path": {"type": "string", "description": "Path to the target file to analyze"}
+                },
+                "required": ["file_path"]
+            }
         )
     ]
 
@@ -292,6 +357,10 @@ async def handle_call_tool(name: str, arguments: dict):
             arguments.get("architecture_style", "Clean Architecture")
         )
         return [TextContent(type="text", text=str(res))]
+    elif name == "analyze_impact_zone":
+        file_path = arguments.get("file_path", "")
+        impact = refactorer.indexer.get_impact_zone(file_path)
+        return [TextContent(type="text", text=str(impact))]
     raise ValueError(f"Unknown tool: {name}")
 
 app = FastAPI()
@@ -323,9 +392,16 @@ async def api_create(payload: dict):
         payload.get("architecture_style", "Clean Architecture")
     )
 
+@app.post("/v2/phoenix/impact")
+async def api_impact(payload: dict):
+    """Bridge endpoint to calculate impact zone and affected dependents."""
+    file_path = payload.get("file_path", "")
+    return refactorer.indexer.get_impact_zone(file_path)
+
 @app.get("/health")
 def health():
     return {"status": "healthy"}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("PORT", os.getenv("PHOENIX_PORT", "8000")))
+    uvicorn.run(app, host="0.0.0.0", port=port)

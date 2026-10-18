@@ -18,6 +18,7 @@ Enables cross-project learning and reflection enrichment.
 from typing import Any, Dict, List, Optional
 
 from feniks.adapters.rae_client.client import RAEClient, RAEError
+from feniks.config.settings import settings
 from feniks.core.models.types import MetaReflection
 from feniks.infra.logging import get_logger
 
@@ -87,6 +88,7 @@ class EnhancedRAEClient(RAEClient):
                 "query": query,
                 "layers": [layer],
                 "top_k": top_k,
+                "min_similarity": min_similarity,
             }
 
             response = self._make_request(method="POST", endpoint="/v2/memories/query", data=payload)
@@ -137,7 +139,7 @@ class EnhancedRAEClient(RAEClient):
 
             response = self._make_request(method="POST", endpoint="/v2/memories/query", data=payload)
 
-            patterns = response.get("results", [])
+            patterns = response.get("results", response.get("patterns", []))
             log.info(f"Retrieved {len(patterns)} cross-project patterns")
             return patterns
 
@@ -182,7 +184,7 @@ class EnhancedRAEClient(RAEClient):
 
             response = self._make_request(method="POST", endpoint="/v2/memories/query", data=payload)
 
-            refactorings = response.get("results", [])
+            refactorings = response.get("results", response.get("refactorings", []))
             log.info(f"Retrieved {len(refactorings)} historical refactorings")
             return refactorings
 
@@ -225,17 +227,16 @@ class EnhancedRAEClient(RAEClient):
 
             # If this is a refactoring-related reflection, get historical patterns
             refactor_insights = []
-            # Check if reflection is about refactoring (in content, title, or tags)
-            is_refactor = any(
+            refactor_type = self._extract_refactor_type(local_reflection)
+            is_refactor = refactor_type is not None or any(
                 "refactor" in str(field).lower()
-                for field in [local_reflection.content, local_reflection.title, local_reflection.tags]
-            )
+                for field in [local_reflection.content, local_reflection.title, local_reflection.tags, getattr(local_reflection, "impact", "")]
+            ) or (hasattr(local_reflection, "metadata") and local_reflection.metadata and "refactor_type" in local_reflection.metadata)
             if is_refactor:
-                refactor_type = self._extract_refactor_type(local_reflection)
-                if refactor_type:
-                    refactor_insights = self.get_historical_refactorings(
-                        refactor_type=refactor_type, project_tags=context.get("tags") if context else None, limit=10
-                    )
+                type_to_query = refactor_type or "generic"
+                refactor_insights = self.get_historical_refactorings(
+                    refactor_type=type_to_query, project_tags=context.get("tags") if context else None, limit=10
+                )
 
             # Enrich the reflection with RAE insights
             enriched_reflection = self._merge_insights(local_reflection, rae_insights, refactor_insights)
@@ -415,8 +416,6 @@ def create_enhanced_rae_client(
     Returns:
         Optional[EnhancedRAEClient]: Enhanced client instance or None if disabled
     """
-    from feniks.config.settings import settings
-
     if not settings.rae_enabled:
         log.debug("RAE integration is disabled")
         return None
