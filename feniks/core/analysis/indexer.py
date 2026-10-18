@@ -2,6 +2,7 @@
 import ast
 import os
 import glob
+from pathlib import Path
 from typing import Dict, List, Set, Optional, Any
 from pydantic import BaseModel
 from feniks.infra.logging import get_logger
@@ -32,9 +33,17 @@ class SystemIndexer:
         
         # Supported extensions for Silicon Oracle v3.2
         extensions = ["*.py", "*.ts", "*.tsx", "*.php"]
+        ignore_dirs = {
+            "venv", ".venv", "node_modules", ".git", "dist", "build", 
+            "__pycache__", ".pytest_cache", "rae-open-claw", "tmp_node1_sync",
+            "work_dir", "runs", "experiments", "htmlcov", ".benchmarks", "output"
+        }
         files = []
         for ext in extensions:
-            files.extend(glob.glob(os.path.join(self.project_root, f"**/{ext}"), recursive=True))
+            for match in glob.glob(os.path.join(self.project_root, f"**/{ext}"), recursive=True):
+                path_parts = set(Path(match).parts)
+                if not (path_parts & ignore_dirs):
+                    files.append(match)
             
         for f in files:
             try:
