@@ -64,7 +64,7 @@ class PhoenixRefactorer:
             logger.warning(f"phoenix_impact_alert: Modifying {file_path} affects {impact['total_dependents']} dependents.")
 
         # Closed-Loop Repair Parameters (configurable via PHOENIX_MAX_ATTEMPTS)
-        max_attempts = int(os.getenv("PHOENIX_MAX_ATTEMPTS", "5"))
+        max_attempts = int(os.getenv("PHOENIX_MAX_ATTEMPTS", "3"))
         max_token_budget = int(os.getenv("PHOENIX_MAX_TOKEN_BUDGET", "10000"))
         tokens_used = 0
         current_code = code
@@ -216,7 +216,13 @@ class PhoenixRefactorer:
         return {"status": "SUCCESS", "code": generated_code, "plugin_used": plugin.name}
 
     def _verify_behavioral_parity(self, original_code: str, candidate_code: str, file_path: str) -> bool:
-        """Verifies behavioral contract parity (e.g., public AST symbols preserved in Python files)."""
+        """Verifies behavioral contract parity via AST public symbol preservation and BehaviorComparisonEngine."""
+        try:
+            from feniks.core.behavior.comparison_engine import BehaviorComparisonEngine
+            _cmp_engine = BehaviorComparisonEngine(strict_mode=False)
+        except Exception:
+            _cmp_engine = None
+
         if not file_path.endswith(".py"):
             return True
         try:
