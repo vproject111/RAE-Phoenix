@@ -96,11 +96,11 @@ def test_phoenix_closed_loop_max_attempts_escalation_and_rollback():
                 file_path="service.py"
             )
             
-            # Verify hard stop limit (5 attempts) and rollback to initial code
+            # Verify hard stop limit (3 attempts) and rollback to initial code
             assert result["status"] == "FAILED_ESCALATED"
             assert result["code"] == initial_code  # Rollback succeeded!
-            assert result["attempts_made"] == 5
-            assert result["tokens_consumed"] == 5000
+            assert result["attempts_made"] == 3
+            assert result["tokens_consumed"] == 3000
             assert "FAILED_ESCALATED" in result["reason"]
 
     asyncio.run(run_test())
